@@ -189,6 +189,7 @@ export function VideoPlayer({
 
   const [playing, setPlaying] = useState(false);
   const [buffering, setBuffering] = useState(true);
+  const [hasLoaded, setHasLoaded] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [duration, setDuration] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
@@ -207,7 +208,9 @@ export function VideoPlayer({
     setControlsVisible(true);
     if (hideTimerRef.current) window.clearTimeout(hideTimerRef.current);
     hideTimerRef.current = window.setTimeout(() => {
-      setControlsVisible(false);
+      if (!videoRef.current?.paused) {
+        setControlsVisible(false);
+      }
     }, 2800);
   };
 
@@ -218,12 +221,27 @@ export function VideoPlayer({
   }, []);
 
   useEffect(() => {
+    const v = videoRef.current;
+    if (v) {
+      v.volume = volume;
+      v.muted = muted;
+      v.playbackRate = speed;
+    }
+  }, [volume, muted, speed, source.url]);
+
+  useEffect(() => {
     if (source.kind === 'youtube') return;
     const video = videoRef.current;
     if (!video) return;
 
+    let cancelled = false;
+    let networkRetries = 0;
+    let mediaRetries = 0;
+
     setErrorMsg(null);
+    setPlaying(false);
     setBuffering(true);
+    setHasLoaded(false);
     setLevels([]);
     setQualityIndex(-1);
 
@@ -232,41 +250,130 @@ export function VideoPlayer({
       hlsRef.current = null;
     }
 
-    if (source.kind === 'hls' && Hls.isSupported()) {
-      const hls = new Hls({
-        enableWorker: true,
-        lowLatencyMode: Boolean(isLive),
+    const attemptPlay = () => {
+      video.play().catch(() => {
+        if (!cancelled) setBuffering(false);
       });
+    };
+
+    const startHls = (useWorker: boolean) => {
+      if (cancelled) return;
+      let hls: Hls;
+      try {
+        hls = new Hls({
+          enableWorker: useWorker,
+          lowLatencyMode: Boolean(isLive),
+          maxBufferLength: 45,
+          maxMaxBufferLength: 120,
+          fragLoadingMaxRetry: 4,
+          manifestLoadingMaxRetry: 3,
+        });
+      } catch {
+        if (useWorker) {
+          startHls(false);
+          return;
+        }
+        setErrorMsg('Video player failed to initialize.');
+        setBuffering(false);
+        return;
+      }
+
       hlsRef.current = hls;
       hls.loadSource(source.url);
       hls.attachMedia(video);
+
       hls.on(Hls.Events.MANIFEST_PARSED, (_, data) => {
+        if (cancelled) return;
         setLevels(
-          data.levels.map((lvl, idx) => ({
+          (data.levels || []).map((lvl, idx) => ({
             index: idx,
-            label: lvl.height ? `${lvl.height}p` : `Level ${idx + 1}`,
+            label: lvl.height
+              ? `${lvl.height}p`
+              : `${Math.round((lvl.bitrate || 0) / 1000)}kbps`,
           }))
         );
-        video.play().catch(() => {});
+        setHasLoaded(true);
+        setBuffering(false);
+        attemptPlay();
       });
-      hls.on(Hls.Events.ERROR, (_, data) => {
-        if (data.fatal) {
-          setErrorMsg('Unable to load video stream.');
-          setBuffering(false);
+
+      hls.on(Hls.Events.LEVEL_SWITCHED, (_, data) => {
+        if (!cancelled) {
+          setQualityIndex(hls.autoLevelEnabled ? -1 : data.level);
         }
       });
+
+      hls.on(Hls.Events.ERROR, (_, data) => {
+        if (cancelled || !data.fatal) return;
+
+        if (useWorker && String(data.details || '').toLowerCase().includes('worker')) {
+          hls.destroy();
+          hlsRef.current = null;
+          startHls(false);
+          return;
+        }
+
+        if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
+          if (
+            data.details !== Hls.ErrorDetails.MANIFEST_LOAD_ERROR &&
+            networkRetries < 2
+          ) {
+            networkRetries += 1;
+            hls.startLoad();
+            return;
+          }
+          setErrorMsg('Unable to load video stream. Try another quality or retry.');
+          setBuffering(false);
+          return;
+        }
+
+        if (data.type === Hls.ErrorTypes.MEDIA_ERROR && mediaRetries < 2) {
+          mediaRetries += 1;
+          hls.recoverMediaError();
+          return;
+        }
+
+        setErrorMsg('Playback failed for this video.');
+        setBuffering(false);
+      });
+    };
+
+    if (source.kind === 'hls') {
+      if (Hls.isSupported()) {
+        startHls(true);
+      } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+        video.src = source.url;
+        video.load();
+        attemptPlay();
+      } else {
+        setErrorMsg('HLS playback is not supported in this browser.');
+        setBuffering(false);
+      }
     } else {
       video.src = source.url;
-      video.play().catch(() => {});
+      video.load();
+      attemptPlay();
     }
 
     const onPlay = () => {
       setPlaying(true);
       setBuffering(false);
+      setHasLoaded(true);
     };
-    const onPause = () => setPlaying(false);
+    const onPause = () => {
+      setPlaying(false);
+      setControlsVisible(true);
+    };
+    const onEnded = () => {
+      setPlaying(false);
+      setBuffering(false);
+      setControlsVisible(true);
+    };
     const onWaiting = () => setBuffering(true);
-    const onCanPlay = () => setBuffering(false);
+    const onReady = () => {
+      setBuffering(false);
+      setHasLoaded(true);
+    };
     const onTimeUpdate = () => {
       setCurrentTime(video.currentTime);
       if (video.buffered.length > 0) {
@@ -282,18 +389,29 @@ export function VideoPlayer({
     };
 
     video.addEventListener('play', onPlay);
+    video.addEventListener('playing', onPlay);
     video.addEventListener('pause', onPause);
+    video.addEventListener('ended', onEnded);
     video.addEventListener('waiting', onWaiting);
-    video.addEventListener('canplay', onCanPlay);
+    video.addEventListener('loadedmetadata', onReady);
+    video.addEventListener('loadeddata', onReady);
+    video.addEventListener('canplay', onReady);
+    video.addEventListener('suspend', onReady);
     video.addEventListener('timeupdate', onTimeUpdate);
     video.addEventListener('durationchange', onDurationChange);
     video.addEventListener('error', onError);
 
     return () => {
+      cancelled = true;
       video.removeEventListener('play', onPlay);
+      video.removeEventListener('playing', onPlay);
       video.removeEventListener('pause', onPause);
+      video.removeEventListener('ended', onEnded);
       video.removeEventListener('waiting', onWaiting);
-      video.removeEventListener('canplay', onCanPlay);
+      video.removeEventListener('loadedmetadata', onReady);
+      video.removeEventListener('loadeddata', onReady);
+      video.removeEventListener('canplay', onReady);
+      video.removeEventListener('suspend', onReady);
       video.removeEventListener('timeupdate', onTimeUpdate);
       video.removeEventListener('durationchange', onDurationChange);
       video.removeEventListener('error', onError);
@@ -302,7 +420,7 @@ export function VideoPlayer({
         hlsRef.current = null;
       }
     };
-  }, [source, isLive]);
+  }, [source.url, source.kind, isLive]);
 
   useEffect(() => {
     if (hlsRef.current) {
@@ -313,8 +431,18 @@ export function VideoPlayer({
   const togglePlay = () => {
     const v = videoRef.current;
     if (!v) return;
-    if (v.paused) v.play().catch(() => {});
-    else v.pause();
+    if (v.paused) {
+      setBuffering(true);
+      v.play()
+        .then(() => {
+          setBuffering(false);
+        })
+        .catch(() => {
+          setBuffering(false);
+        });
+    } else {
+      v.pause();
+    }
     resetHideTimer();
   };
 
@@ -378,11 +506,11 @@ export function VideoPlayer({
           isLive={isLive}
           badge="YouTube"
         />
-        <div className="relative w-full aspect-video bg-black">
+        <div className="relative w-full bg-black" style={{ paddingTop: '56.25%' }}>
           <iframe
             src={source.url}
             title={title}
-            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
             allowFullScreen
             className="absolute inset-0 w-full h-full border-0"
           />
@@ -403,17 +531,18 @@ export function VideoPlayer({
     >
       <PlayerHeader title={title} subtitle={subtitle} onBack={onBack} isLive={isLive} />
 
-      <div className="relative w-full aspect-video bg-black select-none">
+      <div className="relative w-full bg-black select-none" style={{ paddingTop: '56.25%' }}>
         <video
           ref={videoRef}
           poster={poster || undefined}
           playsInline
+          preload="metadata"
           className="absolute inset-0 w-full h-full object-contain"
           onClick={togglePlay}
         />
 
         {buffering && !errorMsg && (
-          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10">
             <div className="bg-black/60 backdrop-blur-md rounded-2xl p-4 border border-white/10">
               <LoaderCircle className="w-8 h-8 text-purple-400 animate-spin" />
             </div>
@@ -421,17 +550,22 @@ export function VideoPlayer({
         )}
 
         {errorMsg && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-black/75 backdrop-blur-sm">
+          <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-3 px-4 text-center bg-black/80 backdrop-blur-sm">
             <AlertTriangle className="w-10 h-10 text-red-400" />
-            <p className="text-sm text-stone-200 font-semibold">{errorMsg}</p>
-            <div className="flex gap-2">
+            <p className="text-sm text-stone-200 font-semibold max-w-md">{errorMsg}</p>
+            <div className="flex flex-wrap justify-center gap-2">
               <button
                 onClick={() => {
                   setErrorMsg(null);
+                  setBuffering(true);
+                  const hls = hlsRef.current;
                   const v = videoRef.current;
-                  if (v) {
+                  if (hls) {
+                    hls.startLoad();
+                    v?.play().catch(() => setBuffering(false));
+                  } else if (v) {
                     v.load();
-                    v.play().catch(() => {});
+                    v.play().catch(() => setBuffering(false));
                   }
                 }}
                 className="px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold transition-colors"
@@ -455,7 +589,7 @@ export function VideoPlayer({
         )}
 
         <AnimatePresence>
-          {!playing && !buffering && !errorMsg && (
+          {!playing && !errorMsg && (!buffering || hasLoaded) && (
             <motion.button
               initial={{ opacity: 0, scale: 0.8 }}
               animate={{ opacity: 1, scale: 1 }}

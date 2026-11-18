@@ -32,7 +32,23 @@ export async function fetchBatches(): Promise<Batch[]> {
 
 export async function fetchBatchClasses(courseId: string): Promise<BatchClassesResponse> {
   const json = await fetchJson<{ data: BatchClassesResponse }>(`/api/batches/${courseId}/classes`);
-  return json.data;
+  const raw = json.data;
+  const topics = Array.isArray(raw?.topics)
+    ? raw.topics.map((t) => ({
+        ...t,
+        classes: Array.isArray(t.classes)
+          ? t.classes.map((c) => ({
+              ...c,
+              pdfs: Array.isArray(c.pdfs) ? c.pdfs : [],
+              recordings: Array.isArray(c.recordings) ? c.recordings : [],
+            }))
+          : [],
+      }))
+    : [];
+  return {
+    course: raw?.course,
+    topics,
+  };
 }
 
 export async function fetchFreeVideos(params: {
@@ -59,18 +75,45 @@ export async function fetchEBooks(): Promise<EBook[]> {
 
 export function isYoutubeUrl(link?: string | null): boolean {
   if (!link) return false;
-  const s = String(link);
+  const s = String(link).trim();
+  if (!s || s === 'null' || s === 'undefined') return false;
   return s.includes('youtube.com') || s.includes('youtu.be') || (!s.includes('.') && s.length === 11);
 }
 
-export function getYoutubeEmbedUrl(raw: string): string {
-  if (/^https?:\/\//.test(raw)) {
-    if (raw.includes('watch?v=')) return raw.replace('watch?v=', 'embed/');
-    if (raw.includes('youtu.be/')) return raw.replace('youtu.be/', 'youtube.com/embed/');
-    if (raw.includes('/shorts/')) return raw.replace('/shorts/', '/embed/shorts/');
-    return raw;
+export function extractYoutubeId(raw: string): string | null {
+  const trimmed = raw.trim();
+  if (!trimmed.includes('.') && /^[a-zA-Z0-9_-]{11}$/.test(trimmed)) {
+    return trimmed;
   }
-  return `https://www.youtube.com/embed/${raw}`;
+  try {
+    const u = new URL(/^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`);
+    const host = u.hostname.replace(/^www\.|^m\./, '');
+    if (host === 'youtu.be') {
+      return u.pathname.split('/').filter(Boolean)[0] || null;
+    }
+    if (host.includes('youtube.com')) {
+      const v = u.searchParams.get('v');
+      if (v) return v;
+      const parts = u.pathname.split('/').filter(Boolean);
+      const markerIdx = parts.findIndex((p) =>
+        p === 'embed' || p === 'shorts' || p === 'live' || p === 'v'
+      );
+      if (markerIdx !== -1 && parts[markerIdx + 1]) {
+        return parts[markerIdx + 1];
+      }
+    }
+  } catch {
+    // ignore malformed URL
+  }
+  return null;
+}
+
+export function getYoutubeEmbedUrl(raw: string): string {
+  const id = extractYoutubeId(raw);
+  if (id) {
+    return `https://www.youtube.com/embed/${id}?rel=0&playsinline=1`;
+  }
+  return raw;
 }
 
 export function streamProxyUrl(url: string): string {
@@ -83,12 +126,12 @@ export function fileProxyUrl(url: string): string {
 
 export function getPlaybackSources(item: {
   classLink?: string | null;
-  recordings?: RecordingItem[];
+  recordings?: RecordingItem[] | null;
 }): PlaybackSource[] {
   const sources: PlaybackSource[] = [];
   const main = (item.classLink || '').trim();
 
-  if (main) {
+  if (main && main !== 'null' && main !== 'undefined') {
     if (isYoutubeUrl(main)) {
       sources.push({
         kind: 'youtube',
@@ -114,14 +157,15 @@ export function getPlaybackSources(item: {
   }
 
   for (const rec of item.recordings || []) {
-    if (!rec.url) continue;
-    if (isYoutubeUrl(rec.url)) continue;
-    const isHls = rec.url.toLowerCase().includes('.m3u8');
+    if (!rec?.url) continue;
+    const recUrl = rec.url.trim();
+    if (!recUrl || isYoutubeUrl(recUrl)) continue;
+    const isHls = recUrl.toLowerCase().includes('.m3u8');
     sources.push({
       kind: isHls ? 'hls' : 'mp4',
-      url: isHls ? streamProxyUrl(rec.url) : rec.url,
+      url: isHls ? streamProxyUrl(recUrl) : recUrl,
       label: rec.quality || 'Recording',
-      raw: rec.url,
+      raw: recUrl,
     });
   }
 

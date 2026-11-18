@@ -1,7 +1,5 @@
 import {
   ClipboardList,
-  Download,
-  ExternalLink,
   FileText,
   NotebookPen,
   Play,
@@ -12,6 +10,7 @@ import { motion } from 'motion/react';
 import React, { useEffect, useMemo, useState } from 'react';
 import { cn, getPlaybackSources } from '../lib/api';
 import type { BatchClass, PdfKind, PlaybackSource } from '../types';
+import { SmartPdfModal } from './PdfViewer';
 
 export const PDF_STYLES: Record<
   PdfKind,
@@ -175,7 +174,7 @@ export function PdfViewerModal({
   pdf,
   onClose,
 }: {
-  pdf: { name: string; url: string; kind: PdfKind };
+  pdf: { name: string; url: string; directUrl?: string; kind: PdfKind };
   onClose: () => void;
 }) {
   const style = PDF_STYLES[pdf.kind] || PDF_STYLES.notes;
@@ -187,91 +186,22 @@ export function PdfViewerModal({
       ? 'Test Paper · PDF'
       : 'Class Notes · PDF';
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
-
   return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      className="fixed inset-0 z-[80] flex items-center justify-center p-3 sm:p-6 bg-black/50 backdrop-blur-md"
-      onClick={onClose}
-      role="dialog"
-      aria-modal="true"
-      aria-label={`Viewing ${pdf.name}`}
-    >
-      <motion.div
-        initial={{ scale: 0.94, y: 20 }}
-        animate={{ scale: 1, y: 0 }}
-        exit={{ scale: 0.94, y: 20 }}
-        transition={{ type: 'spring', damping: 26, stiffness: 300 }}
-        onClick={(e) => e.stopPropagation()}
-        className="liquid-glass-deep rounded-3xl w-full max-w-5xl h-[92vh] flex flex-col overflow-hidden"
-      >
-        <div className="flex items-center justify-between gap-3 px-4 sm:px-6 py-4 border-b border-stone-200 shrink-0">
-          <div className="flex items-center gap-3 min-w-0">
-            <span
-              className={cn(
-                'w-10 h-10 rounded-xl flex items-center justify-center shrink-0 border',
-                style.badgeWrap
-              )}
-            >
-              <Icon className="w-5 h-5" />
-            </span>
-            <div className="min-w-0">
-              <p className="text-[9px] font-black uppercase tracking-[0.2em] text-pink-600">
-                {subtitle}
-              </p>
-              <h3 className="text-sm font-bold text-stone-900 sb-clamp-1">{pdf.name}</h3>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2 shrink-0">
-            <a
-              href={pdf.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="hidden sm:flex items-center gap-2 px-4 py-2.5 rounded-xl bg-stone-100 hover:bg-stone-200 border border-stone-200 text-xs font-bold text-stone-700 hover:text-stone-900 transition-colors"
-              title="Open PDF in a new tab"
-            >
-              <ExternalLink className="w-4 h-4" /> New Tab
-            </a>
-            <a
-              href={`${pdf.url}&download=1`}
-              className="hidden sm:flex items-center gap-2 px-4 py-2.5 rounded-xl bg-stone-100 hover:bg-stone-200 border border-stone-200 text-xs font-bold text-stone-700 hover:text-stone-900 transition-colors"
-            >
-              <Download className="w-4 h-4" /> Download
-            </a>
-            <button
-              onClick={onClose}
-              className="w-10 h-10 rounded-xl bg-red-50 hover:bg-red-500 text-red-600 hover:text-white border border-red-200 flex items-center justify-center transition-colors"
-              aria-label="Close PDF"
-            >
-              <X className="w-5 h-5" />
-            </button>
-          </div>
-        </div>
-
-        <iframe src={pdf.url} title={pdf.name} className="flex-1 w-full border-0 sb-pdf-frame" />
-
-        <p className="sm:hidden px-4 py-2 text-[10px] font-bold text-stone-500 border-t border-stone-200">
-          Preview not showing?{' '}
-          <a
-            href={pdf.url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-purple-600 underline"
-          >
-            Open in new tab
-          </a>
-        </p>
-      </motion.div>
-    </motion.div>
+    <SmartPdfModal
+      title={pdf.name}
+      subtitle={subtitle}
+      url={pdf.url}
+      directUrl={pdf.directUrl}
+      icon={<Icon className="w-5 h-5" />}
+      iconBadgeClass={style.badgeWrap}
+      subtitleClass={
+        pdf.kind === 'dpp'
+          ? 'text-amber-700'
+          : pdf.kind === 'test'
+          ? 'text-emerald-700'
+          : 'text-pink-600'
+      }
+      onClose={onClose}
+    />
   );
 }

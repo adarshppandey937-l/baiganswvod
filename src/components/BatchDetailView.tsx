@@ -30,6 +30,7 @@ import {
   isYoutubeUrl,
   parseHighlights,
 } from '../lib/api';
+import { useAppStore } from '../store/useAppStore';
 import type { Batch, BatchClass, BatchTopic, PdfItem, PdfKind, PlaybackSource } from '../types';
 import { BatchImage } from './BatchImage';
 import { EmptyState } from './EmptyState';
@@ -40,8 +41,8 @@ type ContentFilter = 'all' | 'lectures' | 'notes' | 'dpp' | 'tests';
 
 function matchesFilter(cls: BatchClass, filter: ContentFilter): boolean {
   if (filter === 'all') return true;
-  if (filter === 'lectures') return Boolean(cls.classLink) || cls.recordings.length > 0;
-  return cls.pdfs.some((p) => {
+  if (filter === 'lectures') return Boolean(cls.classLink) || (cls.recordings || []).length > 0;
+  return (cls.pdfs || []).some((p) => {
     const kind = getPdfKind(p);
     if (filter === 'notes') return kind === 'notes';
     if (filter === 'dpp') return kind === 'dpp';
@@ -102,10 +103,12 @@ function ClassCard({
   onPlay: () => void;
   onOpenPdf: (pdf: PdfItem) => void;
 }) {
-  const hasVideo = Boolean(cls.classLink) || cls.recordings.length > 0;
+  const pdfs = cls.pdfs || [];
+  const recordings = cls.recordings || [];
+  const hasVideo = Boolean(cls.classLink) || recordings.length > 0;
   const isYt = isYoutubeUrl(cls.classLink);
   const [expanded, setExpanded] = useState(false);
-  const visiblePdfs = expanded ? cls.pdfs : cls.pdfs.slice(0, 2);
+  const visiblePdfs = expanded ? pdfs : pdfs.slice(0, 2);
 
   return (
     <article
@@ -151,17 +154,17 @@ function ClassCard({
         ) : null}
       </p>
 
-      {cls.pdfs.length > 0 && (
+      {pdfs.length > 0 && (
         <div className="space-y-2 mb-5">
           {visiblePdfs.map((p) => (
             <PdfRow key={p.id} pdf={p} onOpen={onOpenPdf} />
           ))}
-          {cls.pdfs.length > 2 && (
+          {pdfs.length > 2 && (
             <button
               onClick={() => setExpanded((prev) => !prev)}
               className="text-[9px] font-black uppercase tracking-widest text-purple-600 hover:text-purple-800 pl-1 transition-colors"
             >
-              {expanded ? '− Show less' : `+ ${cls.pdfs.length - 2} more PDFs`}
+              {expanded ? '− Show less' : `+ ${pdfs.length - 2} more PDFs`}
             </button>
           )}
         </div>
@@ -186,6 +189,7 @@ function ClassCard({
 }
 
 export function BatchDetailView({ courseId }: { courseId: string }) {
+  const { setView } = useAppStore();
   const [course, setCourse] = useState<Batch | null>(null);
   const [topics, setTopics] = useState<BatchTopic[]>([]);
   const [loading, setLoading] = useState(true);
@@ -201,6 +205,7 @@ export function BatchDetailView({ courseId }: { courseId: string }) {
   const [activePdf, setActivePdf] = useState<{
     name: string;
     url: string;
+    directUrl?: string;
     kind: PdfKind;
   } | null>(null);
   const [filter, setFilter] = useState<ContentFilter>('all');
@@ -316,7 +321,7 @@ export function BatchDetailView({ courseId }: { courseId: string }) {
           </div>
           <div className="flex-1 p-5 sm:p-7 min-w-0">
             <button
-              onClick={() => window.history.back()}
+              onClick={() => setView('batches')}
               className="inline-flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-stone-500 hover:text-purple-700 transition-colors mb-3"
             >
               <ChevronLeft className="w-3.5 h-3.5" /> Back to Batches
@@ -532,9 +537,17 @@ export function BatchDetailView({ courseId }: { courseId: string }) {
           {filteredClasses.length === 0 ? (
             <EmptyState
               icon={<Info className="w-10 h-10 text-stone-400" />}
-              title={filter === 'all' ? 'No content here yet' : 'Nothing matches this filter'}
+              title={
+                topics.length === 0
+                  ? 'No classes uploaded yet'
+                  : filter === 'all'
+                  ? 'No content here yet'
+                  : 'Nothing matches this filter'
+              }
               msg={
-                filter === 'all'
+                topics.length === 0
+                  ? 'This batch currently has no lectures or PDFs on the server. Please go back and choose another batch.'
+                  : filter === 'all'
                   ? 'This topic has no classes. Try another topic folder.'
                   : `No ${filter} in this topic. Switch tabs or pick another topic.`
               }
@@ -553,6 +566,7 @@ export function BatchDetailView({ courseId }: { courseId: string }) {
                     setActivePdf({
                       name: pdf.name,
                       url: fileProxyUrl(pdf.url),
+                      directUrl: pdf.url,
                       kind: getPdfKind(pdf),
                     })
                   }

@@ -1,15 +1,16 @@
-import { BookOpen, Download, ExternalLink, FileText, X } from 'lucide-react';
-import { AnimatePresence, motion } from 'motion/react';
+import { BookOpen, ExternalLink, FileText } from 'lucide-react';
+import { AnimatePresence } from 'motion/react';
 import { useEffect, useState } from 'react';
 import { fetchEBooks, fileProxyUrl } from '../lib/api';
 import type { EBook } from '../types';
 import { EmptyState } from './EmptyState';
+import { SmartPdfModal } from './PdfViewer';
 
 export function EBooksView() {
   const [books, setBooks] = useState<EBook[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [activeBook, setActiveBook] = useState<EBook | null>(null);
+  const [activeBook, setActiveBook] = useState<{ book: EBook; proxyUrl: string } | null>(null);
 
   useEffect(() => {
     fetchEBooks()
@@ -25,8 +26,8 @@ export function EBooksView() {
 
   const openBook = (book: EBook) => {
     setActiveBook({
-      ...book,
-      pdf: fileProxyUrl(book.pdf),
+      book,
+      proxyUrl: fileProxyUrl(book.pdf),
     });
   };
 
@@ -117,61 +118,16 @@ export function EBooksView() {
 
       <AnimatePresence>
         {activeBook && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[80] flex items-center justify-center p-3 sm:p-6 bg-black/50 backdrop-blur-md"
-            onClick={() => setActiveBook(null)}
-            role="dialog"
-            aria-modal="true"
-            aria-label={`Viewing ${activeBook.title}`}
-          >
-            <motion.div
-              initial={{ scale: 0.94, y: 20 }}
-              animate={{ scale: 1, y: 0 }}
-              exit={{ scale: 0.94, y: 20 }}
-              transition={{ type: 'spring', damping: 26, stiffness: 300 }}
-              onClick={(e) => e.stopPropagation()}
-              className="liquid-glass-deep rounded-3xl w-full max-w-5xl h-[92vh] flex flex-col overflow-hidden"
-            >
-              <div className="flex items-center justify-between gap-3 px-4 sm:px-6 py-4 border-b border-stone-200 shrink-0">
-                <div className="flex items-center gap-3 min-w-0">
-                  <span className="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center shrink-0 border border-amber-200">
-                    <BookOpen className="w-5 h-5" />
-                  </span>
-                  <div className="min-w-0">
-                    <p className="text-[9px] font-black uppercase tracking-[0.2em] text-amber-700">
-                      E-Book · PDF
-                    </p>
-                    <h3 className="text-sm font-bold text-stone-900 sb-clamp-1">
-                      {activeBook.title}
-                    </h3>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2 shrink-0">
-                  <a
-                    href={`${activeBook.pdf}&download=1`}
-                    className="hidden sm:flex items-center gap-2 px-4 py-2.5 rounded-xl bg-stone-100 hover:bg-stone-200 border border-stone-200 text-xs font-bold text-stone-700 hover:text-stone-900 transition-colors"
-                  >
-                    <Download className="w-4 h-4" /> Download
-                  </a>
-                  <button
-                    onClick={() => setActiveBook(null)}
-                    className="w-10 h-10 rounded-xl bg-red-50 hover:bg-red-500 text-red-600 hover:text-white border border-red-200 flex items-center justify-center transition-colors"
-                    aria-label="Close e-book"
-                  >
-                    <X className="w-5 h-5" />
-                  </button>
-                </div>
-              </div>
-              <iframe
-                src={activeBook.pdf}
-                title={activeBook.title}
-                className="flex-1 w-full border-0 sb-pdf-frame"
-              />
-            </motion.div>
-          </motion.div>
+          <SmartPdfModal
+            title={activeBook.book.title}
+            subtitle="E-Book · PDF"
+            url={activeBook.proxyUrl}
+            directUrl={activeBook.book.pdf}
+            icon={<BookOpen className="w-5 h-5" />}
+            iconBadgeClass="bg-amber-50 text-amber-600 border-amber-200"
+            subtitleClass="text-amber-700"
+            onClose={() => setActiveBook(null)}
+          />
         )}
       </AnimatePresence>
     </div>

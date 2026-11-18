@@ -1,6 +1,6 @@
-import { Search, Sparkles } from 'lucide-react';
+import { AlertTriangle, Search, Sparkles } from 'lucide-react';
 import { AnimatePresence } from 'motion/react';
-import { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { BatchDetailView } from './components/BatchDetailView';
 import { BatchesView } from './components/BatchesView';
 import { EBooksView } from './components/EBooksView';
@@ -11,6 +11,48 @@ import { WhatsAppModal } from './components/WhatsAppModal';
 import { fetchBatches, HEADER_PHOTO_FALLBACK, HEADER_PHOTO_SRC } from './lib/api';
 import { AppStoreProvider, useAppStore } from './store/useAppStore';
 import type { Batch } from './types';
+
+class ViewErrorBoundary extends React.Component<
+  { children: React.ReactNode; onReset: () => void; resetKey: string },
+  { hasError: boolean; message: string }
+> {
+  constructor(props: { children: React.ReactNode; onReset: () => void; resetKey: string }) {
+    super(props);
+    this.state = { hasError: false, message: '' };
+  }
+
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, message: error?.message || 'Unexpected display error' };
+  }
+
+  componentDidUpdate(prevProps: { resetKey: string }) {
+    if (prevProps.resetKey !== this.props.resetKey && this.state.hasError) {
+      this.setState({ hasError: false, message: '' });
+    }
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="liquid-glass rounded-[2rem] p-10 flex flex-col items-center justify-center text-center gap-4 min-h-[280px]">
+          <AlertTriangle className="w-10 h-10 text-red-500" />
+          <h3 className="text-lg font-black text-stone-900">Something went wrong</h3>
+          <p className="text-sm text-stone-600 font-medium max-w-md">{this.state.message}</p>
+          <button
+            onClick={() => {
+              this.setState({ hasError: false, message: '' });
+              this.props.onReset();
+            }}
+            className="px-5 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-black uppercase tracking-widest transition-colors"
+          >
+            Back to Batches
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 function StudyBisonApp() {
   const { view, activeCourseId, searchQuery, setSearchQuery, setView } = useAppStore();
@@ -88,20 +130,25 @@ function StudyBisonApp() {
           </header>
 
           <main className="flex-1 w-full max-w-[1600px] mx-auto px-4 sm:px-6 py-6 sm:py-8">
-            {view === 'batches' && (
-              <BatchesView batches={batches} loading={loading} error={error} />
-            )}
-            {view === 'batch' && activeCourseId && (
-              <BatchDetailView key={activeCourseId} courseId={activeCourseId} />
-            )}
-            {view === 'batch' && !activeCourseId && (
-              <BatchesView batches={batches} loading={loading} error={error} />
-            )}
-            {view === 'free' && <FreeView freeBatches={freeBatches} />}
-            {view === 'ebooks' && <EBooksView />}
-            {view === 'favorites' && (
-              <FavoritesView batches={batches} loading={loading} error={error} />
-            )}
+            <ViewErrorBoundary
+              resetKey={`${view}-${activeCourseId || ''}`}
+              onReset={() => setView('batches')}
+            >
+              {view === 'batches' && (
+                <BatchesView batches={batches} loading={loading} error={error} />
+              )}
+              {view === 'batch' && activeCourseId && (
+                <BatchDetailView key={activeCourseId} courseId={activeCourseId} />
+              )}
+              {view === 'batch' && !activeCourseId && (
+                <BatchesView batches={batches} loading={loading} error={error} />
+              )}
+              {view === 'free' && <FreeView freeBatches={freeBatches} />}
+              {view === 'ebooks' && <EBooksView />}
+              {view === 'favorites' && (
+                <FavoritesView batches={batches} loading={loading} error={error} />
+              )}
+            </ViewErrorBoundary>
           </main>
         </div>
       </div>
