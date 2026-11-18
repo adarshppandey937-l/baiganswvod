@@ -100,11 +100,9 @@ function BatchCard({
               <span className="text-3xl sm:text-4xl font-black text-emerald-600 leading-none">
                 FREE
               </span>
-              {Boolean(batch.studentCount && batch.studentCount > 0) && (
-                <span className="text-[10px] text-stone-500 font-bold uppercase tracking-widest mt-1">
-                  {batch.studentCount} students
-                </span>
-              )}
+              <span className="text-[10px] text-stone-500 font-bold uppercase tracking-widest mt-1">
+                OWNER -PANDEY JI
+              </span>
             </div>
             <button
               onClick={(e) => {
