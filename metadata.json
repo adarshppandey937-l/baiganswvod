@@ -1,0 +1,8 @@
+{
+  "name": "Study Bison",
+  "description": "Study Bison — Explore premium batches, free classes, video lectures, daily notes & PDFs.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
