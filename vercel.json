@@ -5,7 +5,7 @@
   "rewrites": [
     {
       "source": "/api/(.*)",
-      "destination": "/api/proxy?__path=$1"
+      "destination": "https://sw-studybison.space-z.ai/api/$1"
     },
     {
       "source": "/(.*)",
