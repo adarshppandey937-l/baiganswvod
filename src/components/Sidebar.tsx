@@ -1,4 +1,4 @@
-import { BookOpen, Gift, LayoutGrid, Menu, X } from 'lucide-react';
+import { BookOpen, Gift, Heart, LayoutGrid, Menu, X } from 'lucide-react';
 import { cn, HEADER_PHOTO_FALLBACK, HEADER_PHOTO_SRC } from '../lib/api';
 import { useAppStore } from '../store/useAppStore';
 import type { ViewMode } from '../types';
@@ -12,10 +12,11 @@ const NAV_ITEMS: Array<{
   { id: 'batches', label: 'Explore All Batches', icon: LayoutGrid, hint: 'Premium batches' },
   { id: 'free', label: 'Free Batches', icon: Gift, hint: 'Free classes & shorts' },
   { id: 'ebooks', label: 'E-Books', icon: BookOpen, hint: 'PDF library' },
+  { id: 'favorites', label: 'Favourite', icon: Heart, hint: 'Saved batches' },
 ];
 
 export function Sidebar() {
-  const { view, setView, sidebarOpen, toggleSidebar } = useAppStore();
+  const { view, setView, sidebarOpen, toggleSidebar, favoriteIds } = useAppStore();
 
   const content = (
     <div className="flex flex-col h-full">
@@ -76,8 +77,15 @@ export function Sidebar() {
               >
                 <Icon className="w-5 h-5" />
               </span>
-              <span className="min-w-0">
-                <span className="block text-[13px] font-bold leading-tight">{item.label}</span>
+              <span className="min-w-0 flex-1">
+                <span className="flex items-center justify-between gap-2 text-[13px] font-bold leading-tight">
+                  <span>{item.label}</span>
+                  {item.id === 'favorites' && favoriteIds.length > 0 && (
+                    <span className="text-[10px] font-black text-rose-600 tabular-nums">
+                      {favoriteIds.length}
+                    </span>
+                  )}
+                </span>
                 <span className="block text-[9px] font-bold uppercase tracking-widest text-stone-500 mt-0.5">
                   {item.hint}
                 </span>

@@ -1,4 +1,4 @@
-export type ViewMode = 'batches' | 'batch' | 'free' | 'ebooks';
+export type ViewMode = 'batches' | 'batch' | 'free' | 'ebooks' | 'favorites';
 
 export type PdfKind = 'notes' | 'dpp' | 'test';
 

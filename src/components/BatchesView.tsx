@@ -4,6 +4,7 @@ import {
   BookOpen,
   CheckCircle2,
   Clock3,
+  Heart,
   LayoutGrid,
   Play,
   Search,
@@ -26,6 +27,8 @@ function BatchCard({
   index: number;
   onOpen: (batch: Batch) => void;
 }) {
+  const { isFavorite, toggleFavorite } = useAppStore();
+  const favorited = isFavorite(batch.id);
   const highlights = parseHighlights(batch.highlights).slice(0, 3);
   const faculty = batch.facultyName || 'Expert Faculty';
   const totalClasses = (batch.recordedClassesCount || 0) + (batch.liveClassesCount || 0);
@@ -61,6 +64,24 @@ function BatchCard({
             </span>
           )}
         </div>
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            toggleFavorite(batch.id);
+          }}
+          aria-label={favorited ? `Remove ${batch.title} from favourites` : `Add ${batch.title} to favourites`}
+          aria-pressed={favorited}
+          title={favorited ? 'Remove from Favourite' : 'Add to Favourite'}
+          className={cn(
+            'absolute top-4 right-4 z-30 w-10 h-10 rounded-full backdrop-blur-md border flex items-center justify-center transition-all active:scale-90 shadow-sm',
+            favorited
+              ? 'bg-rose-50/95 text-rose-500 border-rose-200'
+              : 'bg-white/90 text-stone-600 hover:text-rose-500 border-stone-200'
+          )}
+        >
+          <Heart className={cn('w-5 h-5 transition-transform', favorited && 'fill-current scale-105')} />
+        </button>
       </div>
 
       <div className="p-5 sm:p-7 flex flex-col bg-white">

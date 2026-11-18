@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { BatchDetailView } from './components/BatchDetailView';
 import { BatchesView } from './components/BatchesView';
 import { EBooksView } from './components/EBooksView';
+import { FavoritesView } from './components/FavoritesView';
 import { FreeView } from './components/FreeView';
 import { Sidebar, SidebarToggle } from './components/Sidebar';
 import { WhatsAppModal } from './components/WhatsAppModal';
@@ -31,7 +32,7 @@ function StudyBisonApp() {
   }, []);
 
   const freeBatches = batches.filter((b) => b.inFreeList);
-  const showSearch = view === 'batches' || view === 'free';
+  const showSearch = view === 'batches' || view === 'free' || view === 'favorites';
 
   return (
     <div className="sb-app min-h-screen flex flex-col bg-white">
@@ -68,7 +69,11 @@ function StudyBisonApp() {
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     placeholder={
-                      view === 'free' ? 'Search free videos…' : 'Search batches or faculty…'
+                      view === 'free'
+                        ? 'Search free videos…'
+                        : view === 'favorites'
+                        ? 'Search favourite batches…'
+                        : 'Search batches or faculty…'
                     }
                     aria-label="Search"
                     className="w-full liquid-glass rounded-xl pl-11 pr-4 py-2.5 text-xs font-semibold text-stone-900 placeholder:text-stone-400 outline-none focus:border-purple-500 transition-colors"
@@ -94,6 +99,9 @@ function StudyBisonApp() {
             )}
             {view === 'free' && <FreeView freeBatches={freeBatches} />}
             {view === 'ebooks' && <EBooksView />}
+            {view === 'favorites' && (
+              <FavoritesView batches={batches} loading={loading} error={error} />
+            )}
           </main>
         </div>
       </div>
